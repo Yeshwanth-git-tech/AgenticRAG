@@ -1,0 +1,12 @@
+# Core RAG System
+anthropic==0.71.0
+chromadb==1.2.1
+sentence-transformers==5.1.2
+
+# API Server
+fastapi==0.115.0
+uvicorn==0.32.0
+pydantic==2.10.0
+
+# Utilities
+python-dotenv==1.0.0

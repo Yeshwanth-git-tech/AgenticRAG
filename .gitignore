@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+alz/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# ChromaDB
+chroma_db/
+*.sqlite3
+*.db
+
+# API Keys & Secrets
+.env
+*.key
+.anthropic_key
+
+# Logs
+logs/
+*.log
+*.out
+*.err
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large data files
+*.tar.gz
+*.zip
+data/papers/*.json  # Don't commit all papers, just samples
+
+# Results
+results.json
+output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
