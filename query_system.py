@@ -165,18 +165,32 @@ class RetrievalAgent:
     semantic similarity search against indexed research papers.
     """
     
-    def __init__(self, chroma_path: str, model_name: str = "all-MiniLM-L6-v2") -> None:
+    # def __init__(self, chroma_path: str, model_name: str = "all-MiniLM-L6-v2") -> None:
+    #     """
+    #     Initialize retrieval agent.
+        
+    #     Args:
+    #         chroma_path: Path to ChromaDB persistent storage
+    #         model_name: Sentence transformer model name (default: all-MiniLM-L6-v2)
+    #     """
+    #     self.client = chromadb.PersistentClient(path=chroma_path)
+    #     self.collection = self.client.get_collection("alzheimers_research")
+    #     self.model = SentenceTransformer(model_name)
+        
+    #     logger.info(f"Loaded collection with {self.collection.count()} documents")
+
+    def __init__(self, chroma_path: str, model_path: str = "./models/all-MiniLM-L6-v2") -> None:
         """
         Initialize retrieval agent.
         
         Args:
             chroma_path: Path to ChromaDB persistent storage
-            model_name: Sentence transformer model name (default: all-MiniLM-L6-v2)
+            model_path: Path to local sentence transformer model
         """
         self.client = chromadb.PersistentClient(path=chroma_path)
         self.collection = self.client.get_collection("alzheimers_research")
-        self.model = SentenceTransformer(model_name)
-        
+        self.model = SentenceTransformer(model_path)  # Load from local!
+    
         logger.info(f"Loaded collection with {self.collection.count()} documents")
     
     def retrieve(self, query: str, n_results: int = 5) -> List[Dict[str, Any]]:
@@ -311,49 +325,127 @@ class AgenticRAGSystem:
     Author: Yeshwanth Satheesh
     """
     
-    def __init__(self, anthropic_api_key: str, chroma_path: str) -> None:
+    # def __init__(self, anthropic_api_key: str, chroma_path: str) -> None:
+    #     """
+    #     Initialize the RAG system.
+        
+    #     Args:
+    #         anthropic_api_key: Anthropic API key for Claude access
+    #         chroma_path: Path to ChromaDB vector store
+    #     """
+    #     anthropic_client = Anthropic(api_key=anthropic_api_key)
+        
+    #     self.classifier = QueryClassifierAgent(anthropic_client)
+    #     self.decomposer = QueryDecomposerAgent(anthropic_client)
+    #     self.retriever = RetrievalAgent(chroma_path)
+    #     self.synthesizer = SynthesisAgent(anthropic_client)
+    def __init__(self, anthropic_api_key: Optional[str], chroma_path: str) -> None:
         """
         Initialize the RAG system.
         
         Args:
-            anthropic_api_key: Anthropic API key for Claude access
+            anthropic_api_key: Anthropic API key (None for retrieval-only mode)
             chroma_path: Path to ChromaDB vector store
         """
-        anthropic_client = Anthropic(api_key=anthropic_api_key)
+        self.retrieval_only = (anthropic_api_key is None)
         
-        self.classifier = QueryClassifierAgent(anthropic_client)
-        self.decomposer = QueryDecomposerAgent(anthropic_client)
+        if not self.retrieval_only:
+            anthropic_client = Anthropic(api_key=anthropic_api_key)
+            self.classifier = QueryClassifierAgent(anthropic_client)
+            self.decomposer = QueryDecomposerAgent(anthropic_client)
+            self.synthesizer = SynthesisAgent(anthropic_client)
+        
         self.retriever = RetrievalAgent(chroma_path)
-        self.synthesizer = SynthesisAgent(anthropic_client)
     
+    # def query(self, user_query: str, verbose: bool = False) -> Dict[str, Any]:
+    #     """
+    #     Process a research query through the full RAG pipeline.
+        
+    #     Pipeline steps:
+    #         1. Classify query type and complexity
+    #         2. Decompose into sub-queries if needed
+    #         3. Retrieve relevant documents from vector store
+    #         4. Synthesize comprehensive answer using LLM
+        
+    #     Args:
+    #         user_query: The research question to answer
+    #         verbose: If True, log detailed processing steps
+        
+    #     Returns:
+    #         Dictionary containing:
+    #             - query: Original question
+    #             - answer: Generated answer
+    #             - sources: Source paper metadata
+    #             - classification: Query classification info
+    #             - sub_queries: Sub-queries if decomposed
+    #             - num_sources: Number of sources used
+    #             - timestamp: ISO format timestamp
+        
+    #     Example:
+    #         >>> rag = AgenticRAGSystem(api_key, "./chroma_db")
+    #         >>> result = rag.query("What are tau proteins in Alzheimer's?")
+    #         >>> print(result['answer'])
+    #     """
+        
+    #     result = {
+    #         'query': user_query,
+    #         'timestamp': datetime.now().isoformat()
+    #     }
+        
+    #     # Step 1: Classify query
+    #     classification = self.classifier.classify(user_query)
+    #     result['classification'] = classification
+        
+    #     if verbose:
+    #         logger.info(f"Classification: {classification}")
+        
+    #     # Step 2: Decompose if needed
+    #     sub_queries = [user_query]
+    #     if classification.get('needs_decomposition', False):
+    #         sub_queries = self.decomposer.decompose(user_query)
+    #         result['sub_queries'] = sub_queries
+            
+    #         if verbose:
+    #             logger.info(f"Decomposed into {len(sub_queries)} sub-queries")
+        
+    #     # Step 3: Retrieve documents for each sub-query
+    #     all_documents = []
+    #     for sq in sub_queries:
+    #         docs = self.retriever.retrieve(sq, n_results=3)
+    #         all_documents.extend(docs)
+        
+    #     # Remove duplicates by ID
+    #     seen_ids = set()
+    #     unique_docs = []
+    #     for doc in all_documents:
+    #         if doc['id'] not in seen_ids:
+    #             seen_ids.add(doc['id'])
+    #             unique_docs.append(doc)
+        
+    #     if verbose:
+    #         logger.info(f"Retrieved {len(unique_docs)} unique documents")
+        
+    #     # Step 4: Synthesize answer
+    #     synthesis = self.synthesizer.synthesize(
+    #         user_query, 
+    #         unique_docs,
+    #         sub_queries if len(sub_queries) > 1 else None
+    #     )
+        
+    #     result.update(synthesis)
+        
+    #     return result
+
     def query(self, user_query: str, verbose: bool = False) -> Dict[str, Any]:
         """
-        Process a research query through the full RAG pipeline.
-        
-        Pipeline steps:
-            1. Classify query type and complexity
-            2. Decompose into sub-queries if needed
-            3. Retrieve relevant documents from vector store
-            4. Synthesize comprehensive answer using LLM
+        Process a research query through the RAG pipeline.
         
         Args:
             user_query: The research question to answer
             verbose: If True, log detailed processing steps
         
         Returns:
-            Dictionary containing:
-                - query: Original question
-                - answer: Generated answer
-                - sources: Source paper metadata
-                - classification: Query classification info
-                - sub_queries: Sub-queries if decomposed
-                - num_sources: Number of sources used
-                - timestamp: ISO format timestamp
-        
-        Example:
-            >>> rag = AgenticRAGSystem(api_key, "./chroma_db")
-            >>> result = rag.query("What are tau proteins in Alzheimer's?")
-            >>> print(result['answer'])
+            Dictionary with answer/documents and metadata
         """
         
         result = {
@@ -361,6 +453,34 @@ class AgenticRAGSystem:
             'timestamp': datetime.now().isoformat()
         }
         
+        # RETRIEVAL-ONLY MODE (No API key)
+        if self.retrieval_only:
+            logger.info("Running in retrieval-only mode")
+            
+            # Just retrieve documents
+            docs = self.retriever.retrieve(user_query, n_results=5)
+            
+            # Format as simple answer
+            answer_parts = [f"Found {len(docs)} relevant papers:\n"]
+            for i, doc in enumerate(docs, 1):
+                meta = doc['metadata']
+                score = 1 - doc['distance'] if doc['distance'] else 0
+                answer_parts.append(
+                    f"\n[{i}] {meta.get('title', 'N/A')}\n"
+                    f"    PMID: {meta.get('pmid', 'N/A')}\n"
+                    f"    Journal: {meta.get('journal', 'N/A')} ({meta.get('pub_date', 'N/A')})\n"
+                    f"    Relevance: {score:.3f}\n"
+                    f"    Preview: {doc['text'][:200]}...\n"
+                )
+            
+            result['answer'] = ''.join(answer_parts)
+            result['sources'] = [doc['metadata'] for doc in docs]
+            result['num_sources'] = len(docs)
+            result['mode'] = 'retrieval_only'
+            
+            return result
+        
+        # FULL RAG MODE (With API key)
         # Step 1: Classify query
         classification = self.classifier.classify(user_query)
         result['classification'] = classification
@@ -377,13 +497,13 @@ class AgenticRAGSystem:
             if verbose:
                 logger.info(f"Decomposed into {len(sub_queries)} sub-queries")
         
-        # Step 3: Retrieve documents for each sub-query
+        # Step 3: Retrieve documents
         all_documents = []
         for sq in sub_queries:
             docs = self.retriever.retrieve(sq, n_results=3)
             all_documents.extend(docs)
         
-        # Remove duplicates by ID
+        # Remove duplicates
         seen_ids = set()
         unique_docs = []
         for doc in all_documents:
@@ -402,6 +522,7 @@ class AgenticRAGSystem:
         )
         
         result.update(synthesis)
+        result['mode'] = 'full_rag'
         
         return result
 
@@ -448,15 +569,30 @@ def main() -> None:
     
     args = parser.parse_args()
     
-    # Get API key
+    # # Get API key
+    # api_key = os.getenv("ANTHROPIC_API_KEY")
+    # if not api_key:
+    #     raise ValueError("ANTHROPIC_API_KEY environment variable not set")
+
+    # Get API key (optional)
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY environment variable not set")
-    
+        logger.warning("⚠️  No ANTHROPIC_API_KEY found - running in RETRIEVAL-ONLY mode")
+        retrieval_only = True
+    else:
+        retrieval_only = False
+        
     # Initialize system
-    logger.info("Initializing agentic RAG system...")
-    rag = AgenticRAGSystem(api_key, args.chroma_dir)
-    
+    # logger.info("Initializing agentic RAG system...")
+    # rag = AgenticRAGSystem(api_key, args.chroma_dir)
+    # Initialize system
+    if retrieval_only:
+        logger.info("Initializing retrieval-only system (no LLM)...")
+        rag = AgenticRAGSystem(None, args.chroma_dir)
+    else:
+        logger.info("Initializing full agentic RAG system...")
+        rag = AgenticRAGSystem(api_key, args.chroma_dir)
+        
     # Get queries
     queries = []
     if args.query:

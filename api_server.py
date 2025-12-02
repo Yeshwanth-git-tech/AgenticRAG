@@ -1,11 +1,14 @@
 """
 FastAPI Server for Alzheimer's RAG System
-Production-ready API with full LLM integration
+Production-ready API with optional LLM integration
+
+Author: Yeshwanth Satheesh
+Date: October 2025
 """
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Dict, Any, Optional
 import uvicorn
 import argparse
@@ -47,25 +50,27 @@ stats = {
     "queries_processed": 0,
     "start_time": None,
     "last_query_time": None,
-    "total_documents": 0
+    "total_documents": 0,
+    "mode": "unknown"
 }
 
 
-# Pydantic Models
+# Pydantic Models (Fixed deprecation warnings)
 class QueryRequest(BaseModel):
     """Request model for queries"""
-    question: str
-    n_results: int = 5
-    verbose: bool = False
-
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "question": "What are tau proteins in Alzheimer's disease?",
                 "n_results": 5,
                 "verbose": False
             }
         }
+    )
+    
+    question: str
+    n_results: int = 5
+    verbose: bool = False
 
 
 class SourceDocument(BaseModel):
@@ -82,11 +87,12 @@ class QueryResponse(BaseModel):
     question: str
     answer: str
     sources: List[SourceDocument]
-    classification: Dict[str, Any]
+    classification: Optional[Dict[str, Any]] = None
     sub_queries: Optional[List[str]] = None
     num_sources: int
     processing_time_seconds: float
     timestamp: str
+    mode: str
 
 
 class HealthResponse(BaseModel):
@@ -96,6 +102,7 @@ class HealthResponse(BaseModel):
     queries_processed: int
     uptime_seconds: float
     last_query_time: Optional[str]
+    mode: str
 
 
 class StatsResponse(BaseModel):
@@ -105,6 +112,7 @@ class StatsResponse(BaseModel):
     last_query_time: Optional[str]
     total_documents: int
     uptime_seconds: float
+    mode: str
 
 
 # API Endpoints
@@ -121,13 +129,20 @@ async def startup_event():
     # Get configuration
     api_key = os.getenv("ANTHROPIC_API_KEY")
     chroma_dir = os.getenv("CHROMA_DIR", "./chroma_db")
+    model_path = os.getenv("MODEL_PATH", "./models/all-MiniLM-L6-v2")
     
+    # Determine mode
     if not api_key:
-        logger.error("❌ ANTHROPIC_API_KEY not set!")
-        logger.error("Set it with: export ANTHROPIC_API_KEY='your-key'")
-        sys.exit(1)
+        logger.warning("⚠️  No ANTHROPIC_API_KEY found")
+        logger.info("📋 Running in RETRIEVAL-ONLY mode")
+        logger.info("💡 LLM synthesis disabled. Only document retrieval available.")
+        stats["mode"] = "retrieval_only"
+    else:
+        logger.info("🔑 API key found - Full RAG mode enabled")
+        stats["mode"] = "full_rag"
     
     logger.info(f"📂 ChromaDB directory: {chroma_dir}")
+    logger.info(f"🤖 Model path: {model_path}")
     logger.info("🔄 Loading RAG system (this may take 15-20 seconds)...")
     
     try:
@@ -137,6 +152,7 @@ async def startup_event():
         
         logger.info("✅ RAG system initialized successfully!")
         logger.info(f"📚 Loaded {stats['total_documents']} documents")
+        logger.info(f"⚙️  Mode: {stats['mode']}")
         logger.info("=" * 80)
         logger.info("🌐 API is ready to accept requests!")
         logger.info("📖 Interactive docs: http://localhost:8000/docs")
@@ -144,6 +160,8 @@ async def startup_event():
         
     except Exception as e:
         logger.error(f"❌ Failed to initialize RAG system: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 
@@ -154,6 +172,7 @@ async def root():
         "message": "Alzheimer's Research RAG API",
         "version": "1.0.0",
         "status": "operational",
+        "mode": stats["mode"],
         "endpoints": {
             "query": "POST /api/query - Ask questions about Alzheimer's research",
             "health": "GET /api/health - Check system health",
@@ -184,7 +203,8 @@ async def health_check():
         total_documents=stats["total_documents"],
         queries_processed=stats["queries_processed"],
         uptime_seconds=round(uptime, 2),
-        last_query_time=stats["last_query_time"]
+        last_query_time=stats["last_query_time"],
+        mode=stats["mode"]
     )
 
 
@@ -206,7 +226,8 @@ async def get_stats():
         start_time=stats["start_time"].isoformat(),
         last_query_time=stats["last_query_time"],
         total_documents=stats["total_documents"],
-        uptime_seconds=round(uptime, 2)
+        uptime_seconds=round(uptime, 2),
+        mode=stats["mode"]
     )
 
 
@@ -216,9 +237,9 @@ async def query_rag(request: QueryRequest):
     Query the RAG system
     
     This endpoint processes your question through:
-    1. Query classification (what type of question)
-    2. Document retrieval (find relevant papers)
-    3. Answer synthesis (generate comprehensive answer with LLM)
+    1. Query classification (what type of question) - if LLM available
+    2. Document retrieval (find relevant papers) - always
+    3. Answer synthesis (generate comprehensive answer) - if LLM available
     
     Returns a detailed answer with citations to source papers.
     """
@@ -262,11 +283,12 @@ async def query_rag(request: QueryRequest):
             question=request.question,
             answer=result['answer'],
             sources=sources,
-            classification=result['classification'],
+            classification=result.get('classification'),
             sub_queries=result.get('sub_queries'),
             num_sources=result['num_sources'],
             processing_time_seconds=round(processing_time, 2),
-            timestamp=end_time.isoformat()
+            timestamp=end_time.isoformat(),
+            mode=result.get('mode', stats['mode'])
         )
         
         logger.info(f"✅ Query completed in {processing_time:.2f}s")
@@ -331,6 +353,11 @@ def main():
         help="ChromaDB directory path"
     )
     parser.add_argument(
+        "--model_path",
+        default="./models/all-MiniLM-L6-v2",
+        help="Sentence transformer model path"
+    )
+    parser.add_argument(
         "--reload",
         action="store_true",
         help="Enable auto-reload for development"
@@ -341,6 +368,11 @@ def main():
     # Set environment variables
     if not os.getenv("CHROMA_DIR"):
         os.environ["CHROMA_DIR"] = args.chroma_dir
+    if not os.getenv("MODEL_PATH"):
+        os.environ["MODEL_PATH"] = args.model_path
+    
+    logger.info(f"🌐 Starting server on {args.host}:{args.port}")
+    logger.info(f"📖 API docs will be at: http://{args.host}:{args.port}/docs")
     
     # Start server
     uvicorn.run(
